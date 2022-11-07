@@ -1,26 +1,14 @@
-import argparse
-import glob, os, shutil
-import time
+import argparse, glob, os, shutil, cirq, sympy, cv2, collections, random, subprocess, importlib, pkg_resources, time
 from distutils import config
 
-import importlib, pkg_resources
 
 importlib.reload(pkg_resources)
 
 import tensorflow as tf
 import tensorflow_quantum as tfq
-import matplotlib.pyplot as plt
 import pandas as pd
-import subprocess
-
-import cirq
-import sympy
 import numpy as np
 import seaborn as sns
-import collections
-import os, cv2
-import random
-
 from tqdm import tqdm
 from keras import models
 from keras import layers
@@ -36,10 +24,11 @@ APP_ROOT = os.path.dirname(os.path.abspath(__file__))
 files_folder = os.path.join(APP_ROOT, 'files_folder')
 
 
-
 def parse_args():
     parser = argparse.ArgumentParser(prog="TAMI", description='Tool for Analyzing Malware represented as Images')
     group = parser.add_argument_group('Arguments')
+
+    group.add_argument('-d', '--dataset', required=True, type=str, help='dataset')
 
     group.add_argument('-e', '--epochs', required=False, type=int, default=10,
                        help='number of epochs')
@@ -62,289 +51,302 @@ if __name__ == '__main__':
 
     args = parse_args()
 
+    config.DATASET = args.dataset
     config.LEARNING_RATE = args.learning_rate
     config.EPOCHS = args.epochs
     config.BATCH_SIZE = args.batch_size
 
-    CLASS_NAMES = ['Airpush', 'Dowgin', 'FakeInst', 'Fusob', 'Jisut', 'Mecor', 'Trusted']
-    IMG_DIM = 28
-    BATCH_SIZE = config.BATCH_SIZE
-    EPOCHS = config.EPOCHS
-    LEARNING_RATE = config.LEARNING_RATE
-    NUM_CLASSES = len(CLASS_NAMES)
-
-
-    def get_label(file_path):
-        # convert the path to a list of path components
-        parts = tf.strings.split(file_path, os.path.sep)
-        # The second to last is the class-directory
-        # cast to float32 for one_hot encode (otherwise TRUE/FALSE tensor)
-        return tf.cast(parts[-2] == CLASS_NAMES, tf.float32)
-
-
-    def decode_img(img):
-        # convert the compressed string to a 3D uint8 tensor
-        img = tf.image.decode_png(img, channels=1)  # tf.image.decode_jpeg(img, channels=CHANNELS)
-        # Use `convert_image_dtype` to convert to floats in the [0,1] range.
-        img = tf.image.convert_image_dtype(img, tf.float32)
-        # resize the image to the desired size.
-        return tf.image.resize(img, [IMG_DIM, IMG_DIM])
-
-
-    def process_path(file_path):
-        label = get_label(file_path)
-        # load the raw data from the file as a string
-        img = tf.io.read_file(file_path)
-        img = decode_img(img)
-        return img, label
+    DATASET = config.DATASET
 
+    dataset_folder = os.path.join(APP_ROOT, DATASET)
 
-    def prepare_for_training(ds, cache=True, shuffle_buffer_size=1000, loop=False):
-        # IF it is a small dataset, only load it once and keep it in memory.
-        # OTHERWISE use `.cache(filename)` to cache preprocessing work for datasets that don't fit in memory.
-        if cache:
-            if isinstance(cache, str):
-                ds = ds.cache(cache)
-            else:
-                ds = ds.cache()
+    dataset_folder_test = os.path.join(dataset_folder, 'test')
+    dataset_folder_train_val = os.path.join(dataset_folder, 'training/val')
+    dataset_folder_train = os.path.join(dataset_folder, 'training/train')
 
-        ds = ds.shuffle(buffer_size=shuffle_buffer_size)
+    if not os.path.exists(dataset_folder):
+        print(f'No directory called {DATASET}')
+    else:
+        templist = list()
 
-        # Repeat forever
-        if loop:
-            ds = ds.repeat()
+        for folder in os.walk(dataset_folder_test):
+            templist.append(folder[0].replace(dataset_folder_test, '').replace('/',''))
 
-        ds = ds.batch(BATCH_SIZE)
+        CLASS_NAMES = list(filter(None, templist))
 
-        # `prefetch` lets the dataset fetch batches in the background while the model
-        # is training.
-        ds = ds.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
+        print(CLASS_NAMES)
 
-        return ds
+        IMG_DIM = 28
+        BATCH_SIZE = config.BATCH_SIZE
+        EPOCHS = config.EPOCHS
+        LEARNING_RATE = config.LEARNING_RATE
+        NUM_CLASSES = len(CLASS_NAMES)
 
-    print(f'EXPERIMENT ---> LR: {LEARNING_RATE}, E: {EPOCHS}, BS: {BATCH_SIZE}')
 
-    train_path_dir = tf.data.Dataset.list_files("./dataset2T/training/train/*/*")
-    val_path_dir = tf.data.Dataset.list_files("./dataset2T/training/val/*/*")
-    test_path_dir = tf.data.Dataset.list_files("./dataset2T/test/*/*")
+        def get_label(file_path):
+            # convert the path to a list of path components
+            parts = tf.strings.split(file_path, os.path.sep)
+            # The second to last is the class-directory
+            # cast to float32 for one_hot encode (otherwise TRUE/FALSE tensor)
+            return tf.cast(parts[-2] == CLASS_NAMES, tf.float32)
 
-    lab_train = train_path_dir.map(process_path, num_parallel_calls=tf.data.experimental.AUTOTUNE)
-    lab_val = val_path_dir.map(process_path, num_parallel_calls=tf.data.experimental.AUTOTUNE)
-    lab_test = test_path_dir.map(process_path, num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
-    train_ds = prepare_for_training(lab_train)
-    val_ds = prepare_for_training(lab_val)
-    test_ds = prepare_for_training(lab_test)
+        def decode_img(img):
+            # convert the compressed string to a 3D uint8 tensor
+            img = tf.image.decode_png(img, channels=1)  # tf.image.decode_jpeg(img, channels=CHANNELS)
+            # Use `convert_image_dtype` to convert to floats in the [0,1] range.
+            img = tf.image.convert_image_dtype(img, tf.float32)
+            # resize the image to the desired size.
+            return tf.image.resize(img, [IMG_DIM, IMG_DIM])
 
-    train_data = [(images.numpy(), labels.numpy()) for images, labels in train_ds]
-    val_data = [(images.numpy(), labels.numpy()) for images, labels in val_ds]
-    test_data = [(images.numpy(), labels.numpy()) for images, labels in test_ds]
 
-    x_train = []
-    y_train = []
-    x_val = []
-    y_val = []
-    x_test = []
-    y_test = []
+        def process_path(file_path):
+            label = get_label(file_path)
+            # load the raw data from the file as a string
+            img = tf.io.read_file(file_path)
+            img = decode_img(img)
+            return img, label
 
-    for element in train_data:
-        x_train.append(element[0])
-        y_train.append(element[1])
-    for element in val_data:
-        x_val.append(element[0])
-        y_val.append(element[1])
-    for element in test_data:
-        x_test.append(element[0])
-        y_test.append(element[1])
 
-    fin_train_data = [(images.numpy(), labels.numpy()) for images, labels in train_ds]
-    fin_val_data = [(images.numpy(), labels.numpy()) for images, labels in val_ds]
-    fin_test_data = [(images.numpy(), labels.numpy()) for images, labels in test_ds]
+        def prepare_for_training(ds, cache=True, shuffle_buffer_size=1000, loop=False):
+            # IF it is a small dataset, only load it once and keep it in memory.
+            # OTHERWISE use `.cache(filename)` to cache preprocessing work for datasets that don't fit in memory.
+            if cache:
+                if isinstance(cache, str):
+                    ds = ds.cache(cache)
+                else:
+                    ds = ds.cache()
 
-    del x_train[-1]
-    del y_train[-1]
-    del x_val[-1]
-    del y_val[-1]
-    del x_test[-1]
-    del y_test[-1]
+            ds = ds.shuffle(buffer_size=shuffle_buffer_size)
 
-    """Resizing images, convert it in binary, convert it in circuite, and finally convert them in tensorflow circuite
+            # Repeat forever
+            if loop:
+                ds = ds.repeat()
 
-    To process images using a quantum computer, <a href="https://arxiv.org/pdf/1802.06002.pdf" class="external">Farhi et al.</a> proposed representing each pixel with a qubit, with the state depending on the value of the pixel. The first step is to convert to binary encoding. The qubits at pixel indices with values that exceed a threshold are rotated through an $X$ gate. In addition, any image dimension is much too large for current quantum computers, because of it, each image is resized to 4x4.
-    """
+            ds = ds.batch(BATCH_SIZE)
 
-    THRESHOLD = 0.4
+            # `prefetch` lets the dataset fetch batches in the background while the model
+            # is training.
+            ds = ds.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
 
+            return ds
 
-    def convert_to_circuit(image):
-        """Encode truncated classical image into quantum datapoint."""
-        values = np.ndarray.flatten(image)
-        qubits = cirq.GridQubit.rect(4, 4)
-        circuit = cirq.Circuit()
-        for i, value in enumerate(values):
-            if value:
-                circuit.append(cirq.X(qubits[i]))
-        return circuit
 
+        print(f'EXPERIMENT ---> LR: {LEARNING_RATE}, E: {EPOCHS}, BS: {BATCH_SIZE}')
 
-    def quantum_preprocess(image):
+        train_path_dir = tf.data.Dataset.list_files(dataset_folder_train)
+        val_path_dir = tf.data.Dataset.list_files(dataset_folder_train_val)
+        test_path_dir = tf.data.Dataset.list_files(dataset_folder_test)
 
-        small_image = tf.image.resize(image, (4, 4)).numpy()
+        lab_train = train_path_dir.map(process_path, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+        lab_val = val_path_dir.map(process_path, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+        lab_test = test_path_dir.map(process_path, num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
-        binary_image = np.array(small_image > THRESHOLD, dtype=np.float32)
+        train_ds = prepare_for_training(lab_train)
+        val_ds = prepare_for_training(lab_val)
+        test_ds = prepare_for_training(lab_test)
 
-        circ_image = [convert_to_circuit(x) for x in binary_image]
+        train_data = [(images.numpy(), labels.numpy()) for images, labels in train_ds]
+        val_data = [(images.numpy(), labels.numpy()) for images, labels in val_ds]
+        test_data = [(images.numpy(), labels.numpy()) for images, labels in test_ds]
 
-        tfcirc_img = tfq.convert_to_tensor(circ_image)
+        x_train = []
+        y_train = []
+        x_val = []
+        y_val = []
+        x_test = []
+        y_test = []
 
-        del binary_image, circ_image
+        for element in train_data:
+            x_train.append(element[0])
+            y_train.append(element[1])
+        for element in val_data:
+            x_val.append(element[0])
+            y_val.append(element[1])
+        for element in test_data:
+            x_test.append(element[0])
+            y_test.append(element[1])
 
-        return tfcirc_img
+        fin_train_data = [(images.numpy(), labels.numpy()) for images, labels in train_ds]
+        fin_val_data = [(images.numpy(), labels.numpy()) for images, labels in val_ds]
+        fin_test_data = [(images.numpy(), labels.numpy()) for images, labels in test_ds]
 
+        del x_train[-1]
+        del y_train[-1]
+        del x_val[-1]
+        del y_val[-1]
+        del x_test[-1]
+        del y_test[-1]
 
-    x_train_tfcirc = [quantum_preprocess(train) for train in x_train]
-    x_val_tfcirc = [quantum_preprocess(val) for val in x_val]
-    x_test_tfcirc = [quantum_preprocess(test) for test in x_test]
 
-    x_train_tfcirc = np.vstack(train for train in x_train_tfcirc).flatten()
-    x_val_tfcirc = np.vstack(val for val in x_val_tfcirc).flatten()
+        THRESHOLD = 0.4
 
-    x_test_tfcirc = np.vstack(val for val in x_test_tfcirc).flatten()
-    y_train = np.array(y_train)
 
-    y_val = np.array(y_val)
-    y_test = np.array(y_test)
+        def convert_to_circuit(image):
+            values = np.ndarray.flatten(image)
+            qubits = cirq.GridQubit.rect(4, 4)
+            circuit = cirq.Circuit()
+            for i, value in enumerate(values):
+                if value:
+                    circuit.append(cirq.X(qubits[i]))
+            return circuit
 
-    y_train = y_train.reshape(y_train.shape[0] * y_train.shape[1], y_train.shape[2])
-    y_val = y_val.reshape(y_val.shape[0] * y_val.shape[1], y_val.shape[2])
-    y_test = y_test.reshape(y_test.shape[0] * y_test.shape[1], y_test.shape[2])
 
-    """Quantum Neural Network (QNN)"""
+        def quantum_preprocess(image):
 
+            small_image = tf.image.resize(image, (4, 4)).numpy()
 
-    class CircuitLayerBuilder:
-        def __init__(self, data_qubits, readout):
-            self.data_qubits = data_qubits
-            self.readout = readout
+            binary_image = np.array(small_image > THRESHOLD, dtype=np.float32)
 
-        def add_layer(self, circuit, gate, prefix):
-            for i, qubit in enumerate(self.data_qubits):
-                symbol = sympy.Symbol(prefix + '-' + str(i))
-                circuit.append(gate(qubit, self.readout) ** symbol)
+            circ_image = [convert_to_circuit(x) for x in binary_image]
 
+            tfcirc_img = tfq.convert_to_tensor(circ_image)
 
-    def create_qnn_model():
-        """Create a QNN model circuit and readout operation to go along with it."""
-        data_qubits = cirq.GridQubit.rect(4, 4)  # a 4x4 grid.
-        readout = cirq.GridQubit(-1, -1)  # a single qubit at [-1,-1]
-        circ = cirq.Circuit()
+            del binary_image, circ_image
 
-        # Prepare the readout qubit.
-        circ.append(cirq.X(readout))
-        circ.append(cirq.H(readout))
+            return tfcirc_img
 
-        builder = CircuitLayerBuilder(data_qubits=data_qubits, readout=readout)
 
-        # Then add layers (TODO experiment by adding more).
-        builder.add_layer(circ, cirq.XX, "xx1")
-        builder.add_layer(circ, cirq.ZZ, "zz1")
+        x_train_tfcirc = [quantum_preprocess(train) for train in x_train]
+        x_val_tfcirc = [quantum_preprocess(val) for val in x_val]
+        x_test_tfcirc = [quantum_preprocess(test) for test in x_test]
 
-        # Finally, prepare the readout qubit.
-        circ.append(cirq.H(readout))
+        x_train_tfcirc = np.vstack(train for train in x_train_tfcirc).flatten()
+        x_val_tfcirc = np.vstack(val for val in x_val_tfcirc).flatten()
 
-        return circ, cirq.Z(readout)
+        x_test_tfcirc = np.vstack(val for val in x_test_tfcirc).flatten()
+        y_train = np.array(y_train)
 
+        y_val = np.array(y_val)
+        y_test = np.array(y_test)
 
-    model_circuit, model_readout = create_qnn_model()
+        y_train = y_train.reshape(y_train.shape[0] * y_train.shape[1], y_train.shape[2])
+        y_val = y_val.reshape(y_val.shape[0] * y_val.shape[1], y_val.shape[2])
+        y_test = y_test.reshape(y_test.shape[0] * y_test.shape[1], y_test.shape[2])
 
-    model = tf.keras.Sequential([
-        # The input is the data-circuit, encoded as a tf.string
-        tf.keras.layers.Input(shape=(), dtype=tf.string),
 
-        # The PQC layer returns the expected value of the readout gate, range [-1,1].
-        tfq.layers.PQC(model_circuit, model_readout),
+        class CircuitLayerBuilder:
+            def __init__(self, data_qubits, readout):
+                self.data_qubits = data_qubits
+                self.readout = readout
 
-        layers.Dense(NUM_CLASSES, activation='softmax'),
-    ])
+            def add_layer(self, circuit, gate, prefix):
+                for i, qubit in enumerate(self.data_qubits):
+                    symbol = sympy.Symbol(prefix + '-' + str(i))
+                    circuit.append(gate(qubit, self.readout) ** symbol)
 
-    opt = tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE)
 
-    model.compile(loss='categorical_crossentropy', optimizer=opt,
-                  metrics=['acc', Precision(name="prec"), Recall(name="rec"), AUC(name='auc')])
+        def create_qnn_model():
+            data_qubits = cirq.GridQubit.rect(4, 4)  # a 4x4 grid.
+            readout = cirq.GridQubit(-1, -1)  # a single qubit at [-1,-1]
+            circ = cirq.Circuit()
 
-    qnn_training = model.fit(x=x_train_tfcirc,
-                             y=y_train,
-                             batch_size=BATCH_SIZE,
-                             epochs=EPOCHS,
-                             validation_data=(x_val_tfcirc, y_val))
+            # Prepare the readout qubit.
+            circ.append(cirq.X(readout))
+            circ.append(cirq.H(readout))
 
-    LEARNING_RATE = str(LEARNING_RATE).replace('0.', '')
+            builder = CircuitLayerBuilder(data_qubits=data_qubits, readout=readout)
 
-    qnn_test = model.evaluate(x_test_tfcirc, y_test)
+            # Then add layers (TODO experiment by adding more).
+            builder.add_layer(circ, cirq.XX, "xx1")
+            builder.add_layer(circ, cirq.ZZ, "zz1")
 
-    """Metric's plots"""
+            # Finally, prepare the readout qubit.
+            circ.append(cirq.H(readout))
 
-    plt.plot(qnn_training.history['acc'])
-    plt.plot(qnn_training.history['val_acc'])
-    plt.title('model accuracy')
-    plt.ylabel('accuracy')
-    plt.xlabel('epoch')
-    plt.legend(['train', 'val'], loc='lower right')
-    plt.rcParams["figure.figsize"] = (15, 10)
-    fig1 = plt.gcf()
-    plt.show()
-    plt.draw()
-    model_accuracy_figure = os.path.join(files_folder, f'model-accuracy-{str(BATCH_SIZE)}-{str(EPOCHS)}-{str(LEARNING_RATE)}.png')
-    fig1.savefig(model_accuracy_figure)
+            return circ, cirq.Z(readout)
 
-    plt.plot(qnn_training.history['loss'])
-    plt.plot(qnn_training.history['val_loss'])
-    plt.title('model loss')
-    plt.ylabel('loss')
-    plt.xlabel('epoch')
-    plt.legend(['train', 'val'], loc='upper right')
-    plt.rcParams["figure.figsize"] = (15, 10)
-    fig1 = plt.gcf()
-    plt.show()
-    plt.draw()
-    model_loss_figure = os.path.join(files_folder, f'model-loss-{str(BATCH_SIZE)}-{str(EPOCHS)}-{str(LEARNING_RATE)}.png')
-    fig1.savefig(model_loss_figure)
 
-    pd.DataFrame(qnn_training.history).plot(figsize=(15, 10))
-    plt.xlabel("Epochs")
-    plt.ylabel("Metrics")
-    fig1 = plt.gcf()
-    plt.show()
-    plt.draw()
-    full_train_fig = os.path.join(files_folder, f'full-training-{str(BATCH_SIZE)}-{str(EPOCHS)}-{str(LEARNING_RATE)}.png')
-    fig1.savefig(full_train_fig)
+        model_circuit, model_readout = create_qnn_model()
 
-    import pickle
+        model = tf.keras.Sequential([
+            # The input is the data-circuit, encoded as a tf.string
+            tf.keras.layers.Input(shape=(), dtype=tf.string),
 
-    with open('trainHistoryDic', 'wb') as file_pi:
-        pickle.dump(qnn_training.history, file_pi)
+            # The PQC layer returns the expected value of the readout gate, range [-1,1].
+            tfq.layers.PQC(model_circuit, model_readout),
 
-    hist_df = pd.DataFrame(qnn_training.history)
+            layers.Dense(NUM_CLASSES, activation='softmax'),
+        ])
 
-    csv_name = os.path.join(files_folder, f'training-settings-{BATCH_SIZE}-{EPOCHS}-{LEARNING_RATE}.csv')
+        opt = tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE)
 
-    hist_df.to_csv(csv_name, index=None, sep=',', mode='a')
+        model.compile(loss='categorical_crossentropy', optimizer=opt,
+                      metrics=['acc', Precision(name="prec"), Recall(name="rec"), AUC(name='auc')])
 
-    new_folder = os.path.join(files_folder, f'FOLDER-{str(BATCH_SIZE)}-{str(EPOCHS)}-{LEARNING_RATE}')
+        qnn_training = model.fit(x=x_train_tfcirc,
+                                 y=y_train,
+                                 batch_size=BATCH_SIZE,
+                                 epochs=EPOCHS,
+                                 validation_data=(x_val_tfcirc, y_val))
 
-    if not os.path.exists(new_folder):
-        os.makedirs(new_folder)
+        LEARNING_RATE = str(LEARNING_RATE).replace('0.', '')
 
-    os.chdir("./")
-    for file in glob.glob("./*.png"):
-        shutil.move(file, new_folder)
-    for file in glob.glob("./*.csv"):
-        shutil.move(file, new_folder)
-    for file in glob.glob("./*.txt"):
-        shutil.move(file, new_folder)
-    for file in glob.glob('./*'):
-        if 'qnn' in file:
+        qnn_test = model.evaluate(x_test_tfcirc, y_test)
+
+        plt.plot(qnn_training.history['acc'])
+        plt.plot(qnn_training.history['val_acc'])
+        plt.title('model accuracy')
+        plt.ylabel('accuracy')
+        plt.xlabel('epoch')
+        plt.legend(['train', 'val'], loc='lower right')
+        plt.rcParams["figure.figsize"] = (15, 10)
+        fig1 = plt.gcf()
+        plt.show()
+        plt.draw()
+        model_accuracy_figure = os.path.join(files_folder,
+                                             f'model-accuracy-{str(BATCH_SIZE)}-{str(EPOCHS)}-{str(LEARNING_RATE)}.png')
+        fig1.savefig(model_accuracy_figure)
+
+        plt.plot(qnn_training.history['loss'])
+        plt.plot(qnn_training.history['val_loss'])
+        plt.title('model loss')
+        plt.ylabel('loss')
+        plt.xlabel('epoch')
+        plt.legend(['train', 'val'], loc='upper right')
+        plt.rcParams["figure.figsize"] = (15, 10)
+        fig1 = plt.gcf()
+        plt.show()
+        plt.draw()
+        model_loss_figure = os.path.join(files_folder,
+                                         f'model-loss-{str(BATCH_SIZE)}-{str(EPOCHS)}-{str(LEARNING_RATE)}.png')
+        fig1.savefig(model_loss_figure)
+
+        pd.DataFrame(qnn_training.history).plot(figsize=(15, 10))
+        plt.xlabel("Epochs")
+        plt.ylabel("Metrics")
+        fig1 = plt.gcf()
+        plt.show()
+        plt.draw()
+        full_train_fig = os.path.join(files_folder,
+                                      f'full-training-{str(BATCH_SIZE)}-{str(EPOCHS)}-{str(LEARNING_RATE)}.png')
+        fig1.savefig(full_train_fig)
+
+        import pickle
+
+        with open('trainHistoryDic', 'wb') as file_pi:
+            pickle.dump(qnn_training.history, file_pi)
+
+        hist_df = pd.DataFrame(qnn_training.history)
+
+        csv_name = os.path.join(files_folder, f'training-settings-{BATCH_SIZE}-{EPOCHS}-{LEARNING_RATE}.csv')
+
+        hist_df.to_csv(csv_name, index=None, sep=',', mode='a')
+
+        new_folder = os.path.join(files_folder, f'FOLDER-{str(BATCH_SIZE)}-{str(EPOCHS)}-{LEARNING_RATE}')
+
+        if not os.path.exists(new_folder):
+            os.makedirs(new_folder)
+
+        os.chdir("./")
+        for file in glob.glob("./*.png"):
             shutil.move(file, new_folder)
+        for file in glob.glob("./*.csv"):
+            shutil.move(file, new_folder)
+        for file in glob.glob("./*.txt"):
+            shutil.move(file, new_folder)
+        for file in glob.glob('./*'):
+            if 'qnn' in file:
+                shutil.move(file, new_folder)
 
-    shutil.make_archive(new_folder, 'zip', new_folder)
-
+        shutil.make_archive(new_folder, 'zip', new_folder)
