@@ -19,7 +19,7 @@ Files such as plots, training and validation values, and execution time are save
 
 - [@Vigimella](https://www.github.com/vigimella)
 - [@FrancescoMercaldo](https://github.com/FrancescoMercaldo)
-- [@Dack1010](https://github.com/Djack1010)
+- [@Djack1010](https://github.com/Djack1010)
 
 ## Contributing
 
