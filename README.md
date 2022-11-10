@@ -14,6 +14,7 @@ After the .sh file is created, run the following command
 ```bash
 docker-compose up --build
 ```
+Files such as plots, training and validation values, and execution time are saved after execution in a folder called "exp_archive".
 ## Authors
 
 - [@Vigimella](https://www.github.com/vigimella)
