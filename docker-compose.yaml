@@ -5,4 +5,4 @@ services:
     container_name: QNN-container
     build: .
     volumes:
-      - ./files/:/usr/src/app/files/
+      - ./exp_archive/:/usr/src/app/exp_archive/
