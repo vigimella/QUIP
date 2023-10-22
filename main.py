@@ -323,7 +323,7 @@ qnn_test = model.evaluate(x_test_tfcirc, y_test)
 
 # Save Trained Model
 
-qnn_training.save_('qnn_model.h5')
+qnn_training.save('qnn_model.h5')
 
 LEARNING_RATE = str(LEARNING_RATE).replace('0.', '')
 THRESHOLD = str(THRESHOLD).replace('0.', '')
