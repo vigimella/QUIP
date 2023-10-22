@@ -1,14 +1,13 @@
 import importlib, pkg_resources
 
 importlib.reload(pkg_resources)
-import os, glob, shutil, pickle
+import os, glob, shutil, pickle, datetime
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 import tensorflow as tf
 import tensorflow_quantum as tfq
 import matplotlib.pyplot as plt
-import pandas as pd
 from distutils import config
 
 import cirq
@@ -33,6 +32,7 @@ from cirq.contrib.svg import SVGCircuit
 
 APP_ROOT = os.path.dirname(os.path.abspath(__file__))
 files_folder = os.path.join(APP_ROOT, 'exp_archive')
+
 
 def get_label(file_path):
     # convert the path to a list of path components
@@ -99,6 +99,50 @@ def parse_args():
     return arguments
 
 
+def build_plot(folder, file_name, first_metric_list, second_metric_list, metric_name):
+    plt.rcParams["figure.autolayout"] = True
+
+    file_name = file_name.replace('.results', '')
+    plot_name = os.path.join(folder, f'{metric_name}_{file_name}')
+
+    # plot creation
+    num_epochs = len(first_metric_list) + 1
+    epochs = range(1, num_epochs)
+
+    fig, ax = plt.subplots()
+
+    ax.plot(epochs, first_metric_list, color='#BF2A15', linestyle=':', label=f'Training {metric_name}')
+    ax.plot(epochs, second_metric_list, 'o-', label=f'Validation {metric_name}')
+    ax.set_xlabel('Epochs')
+    ax.set_ylabel(f'{metric_name}')
+    ax.set_xticks(range(1, len(first_metric_list) + 1))
+    ax.legend()
+
+    # set plot colors
+
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['bottom'].set_visible(False)
+    ax.spines['left'].set_visible(False)
+    ax.set_facecolor('#e5e5e5')
+    ax.tick_params(color='#797979', labelcolor='#797979')
+    ax.patch.set_edgecolor('black')
+    ax.grid(True, color='white')
+
+    if not num_epochs >= 20:
+        plt.rcParams["figure.figsize"] = [(num_epochs / 3.22), 5.50]
+
+    else:
+        plt.tick_params(axis='x', which='major', labelsize=5)
+        plt.rcParams["figure.figsize"] = [8.50, 5.50]
+
+    plt.draw()
+
+    fig.savefig(plot_name, dpi=180)
+
+    print(f"{metric_name}'s plot created and stored at following path: {folder}.")
+
+
 args = parse_args()
 
 config.DATASET = args.dataset
@@ -132,7 +176,8 @@ LEARNING_RATE = config.LEARNING_RATE
 THRESHOLD = config.THRESHOLD
 NUM_CLASSES = len(CLASS_NAMES)
 
-print(f'Experiment submitted | Batch Size: {str(BATCH_SIZE)}, Epochs: {str(EPOCHS)}, Learning Rate: {str(LEARNING_RATE)}')
+print(
+    f'Experiment submitted | Batch Size: {str(BATCH_SIZE)}, Epochs: {str(EPOCHS)}, Learning Rate: {str(LEARNING_RATE)}')
 
 lab_train = train_path_dir.map(process_path, num_parallel_calls=tf.data.experimental.AUTOTUNE)
 lab_val = val_path_dir.map(process_path, num_parallel_calls=tf.data.experimental.AUTOTUNE)
@@ -273,65 +318,48 @@ qnn_training = model.fit(x=x_train_tfcirc,
                          epochs=EPOCHS,
                          validation_data=(x_val_tfcirc, y_val))
 
+print('Test \n')
 qnn_test = model.evaluate(x_test_tfcirc, y_test)
 
+# Save Trained Model
+
+qnn_training.save_('qnn_model.h5')
+
 LEARNING_RATE = str(LEARNING_RATE).replace('0.', '')
+THRESHOLD = str(THRESHOLD).replace('0.', '')
+current_timestamp = datetime.datetime.now()
+file_name = f'exp{str(BATCH_SIZE)}{str(EPOCHS)}{LEARNING_RATE}{str(current_timestamp)}T{THRESHOLD}'
 
-print("EX. TIME: --- %s seconds ---" % (time.time() - start_time),
-      file=open(os.path.join(files_folder, 'ex-time.txt'), 'a'))
+history = model.history
 
-plt.plot(qnn_training.history['acc'])
-plt.plot(qnn_training.history['val_acc'])
-plt.title('model accuracy')
-plt.ylabel('accuracy')
-plt.xlabel('epoch')
-plt.legend(['train', 'val'], loc='lower right')
-plt.rcParams["figure.figsize"] = (15, 10)
-fig1 = plt.gcf()
-plt.show()
-plt.draw()
-fig1.savefig(os.path.join(files_folder, f'model-accuracy-{str(BATCH_SIZE)}-{str(EPOCHS)}-{str(LEARNING_RATE)}.png'))
+# Save Results
+print('Saving Results...')
 
-plt.plot(qnn_training.history['loss'])
-plt.plot(qnn_training.history['val_loss'])
-plt.title('model loss')
-plt.ylabel('loss')
-plt.xlabel('epoch')
-plt.legend(['train', 'val'], loc='upper right')
-plt.rcParams["figure.figsize"] = (15, 10)
-fig1 = plt.gcf()
-plt.show()
-plt.draw()
-fig1.savefig(os.path.join(files_folder, f'model-loss-{str(BATCH_SIZE)}-{str(EPOCHS)}-{str(LEARNING_RATE)}.png'))
-
-pd.DataFrame(qnn_training.history).plot(figsize=(15, 10))
-plt.xlabel("Epochs")
-plt.ylabel("Metrics")
-fig1 = plt.gcf()
-plt.show()
-plt.draw()
-fig1.savefig(os.path.join(files_folder, f'full-training-{str(BATCH_SIZE)}-{str(EPOCHS)}-{str(LEARNING_RATE)}.png'))
-
-with open('trainHistoryDic', 'wb') as file_pi:
-    pickle.dump(qnn_training.history, file_pi)
-
-hist_df = pd.DataFrame(qnn_training.history)
-
-hist_df.to_csv(os.path.join(files_folder, r'training-settings-' + str(BATCH_SIZE) + '-' + str(EPOCHS) + '-' + str(
-    LEARNING_RATE) + '.csv'), index=None, sep=',', mode='a')
-
-new_folder = os.path.join(files_folder, f'exp-{str(BATCH_SIZE)}-{str(EPOCHS)}-{LEARNING_RATE}')
+new_folder = os.path.join(files_folder, file_name)
 
 if not os.path.exists(new_folder):
     os.makedirs(new_folder)
 
-os.chdir(files_folder)
-for file in glob.glob("*.png"):
-    shutil.move(file, new_folder)
-for file in glob.glob("*.csv"):
-    shutil.move(file, new_folder)
-for file in glob.glob("*.txt"):
-    shutil.move(file, new_folder)
+output_file_training = os.path.join(new_folder, 'ex-time.txt')
+
+time_seconds = time.time() - start_time
+
+# Convert to hours, minutes, and seconds
+time_hours = int(time_seconds // 3600)
+time_seconds %= 3600
+elapsed_minutes = int(time_seconds // 60)
+time_seconds %= 60
+
+# Open the file for writing and save the data
+with open(output_file_training, "w") as file:
+    for key, value in history.history.items():
+        file.write(f"{key}:[{', '.join(map(str, value))}]\n")
+    file.write(f'Execution Time: {time_hours} H, {elapsed_minutes} M, {int(time_seconds)} S')
+
+build_plot(folder=new_folder, file_name=file_name, metric_name='accuracy', first_metric_list=qnn_training.history['acc'],
+           second_metric_list=qnn_training.history['val_acc'])
+build_plot(folder=new_folder, file_name=file_name, metric_name='loss', first_metric_list=qnn_training.history['loss'],
+           second_metric_list=qnn_training.history['val_loss'])
 
 shutil.make_archive(new_folder, 'zip', new_folder)
 
