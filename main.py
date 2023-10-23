@@ -1,7 +1,7 @@
 import importlib, pkg_resources
 
 importlib.reload(pkg_resources)
-import os, glob, shutil, pickle, datetime
+import os, glob, shutil, pickle, datetime, re
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
@@ -142,6 +142,7 @@ def build_plot(folder, file_name, first_metric_list, second_metric_list, metric_
 
     print(f"{metric_name}'s plot created and stored at following path: {folder}.")
 
+current_timestamp = datetime.datetime.now()
 
 args = parse_args()
 
@@ -320,11 +321,11 @@ qnn_training = model.fit(x=x_train_tfcirc,
 
 print('Test \n')
 qnn_test = model.evaluate(x_test_tfcirc, y_test)
-
+modified_timestamp = re.sub(r'[.:\s-]', '', str(current_timestamp))
 LEARNING_RATE = str(LEARNING_RATE).replace('0.', '')
 THRESHOLD = str(THRESHOLD).replace('0.', '')
-current_timestamp = datetime.datetime.now()
-file_name = f'exp{str(BATCH_SIZE)}{str(EPOCHS)}{LEARNING_RATE}{str(current_timestamp)}T{THRESHOLD}'
+
+file_name = f'exp{str(BATCH_SIZE)}{str(EPOCHS)}{LEARNING_RATE}_{modified_timestamp}_T{THRESHOLD}'
 
 history = model.history
 
@@ -338,20 +339,12 @@ if not os.path.exists(new_folder):
 
 output_file_training = os.path.join(new_folder, 'ex-time.txt')
 
-time_seconds = time.time() - start_time
-
-# Convert to hours, minutes, and seconds
-time_hours = int(time_seconds // 3600)
-time_seconds %= 3600
-elapsed_minutes = int(time_seconds // 60)
-time_seconds %= 60
-
 # Open the file for writing and save the data
 with open(output_file_training, "w") as file:
     for key, value in history.history.items():
         file.write(f"{key}:[{', '.join(map(str, value))}]\n")
-    file.write(f'Test: {qnn_test}')
-    file.write(f'Execution Time: {time_hours} H, {elapsed_minutes} M, {int(time_seconds)} S')
+    file.write(f'Test: {qnn_test} \n')
+    file.write(f'EXP Started: {current_timestamp}')
 
 build_plot(folder=new_folder, file_name=file_name, metric_name='accuracy', first_metric_list=qnn_training.history['acc'],
            second_metric_list=qnn_training.history['val_acc'])
