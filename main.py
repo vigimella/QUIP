@@ -101,7 +101,7 @@ def parse_args():
 
 def build_plot(folder, file_name, first_metric_list, second_metric_list, metric_name):
     plt.rcParams["figure.autolayout"] = True
-
+    metric_name = metric_name.capitalize()
     file_name = file_name.replace('.results', '')
     plot_name = os.path.join(folder, f'{metric_name}_{file_name}')
 
@@ -327,7 +327,7 @@ THRESHOLD = str(THRESHOLD).replace('0.', '')
 
 file_name = f'exp{str(BATCH_SIZE)}{str(EPOCHS)}{LEARNING_RATE}_{modified_timestamp}_T{THRESHOLD}'
 
-history = model.history
+history = qnn_training.history
 
 # Save Results
 print('Saving Results...')
@@ -352,5 +352,5 @@ build_plot(folder=new_folder, file_name=file_name, metric_name='loss', first_met
            second_metric_list=qnn_training.history['val_loss'])
 
 shutil.make_archive(new_folder, 'zip', new_folder)
-
 print(f'All files were successfully saved to the following directory: {files_folder}')
+
