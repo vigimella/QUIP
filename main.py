@@ -321,10 +321,6 @@ qnn_training = model.fit(x=x_train_tfcirc,
 print('Test \n')
 qnn_test = model.evaluate(x_test_tfcirc, y_test)
 
-# Save Trained Model
-
-qnn_training.save('qnn_model.h5')
-
 LEARNING_RATE = str(LEARNING_RATE).replace('0.', '')
 THRESHOLD = str(THRESHOLD).replace('0.', '')
 current_timestamp = datetime.datetime.now()
@@ -354,6 +350,7 @@ time_seconds %= 60
 with open(output_file_training, "w") as file:
     for key, value in history.history.items():
         file.write(f"{key}:[{', '.join(map(str, value))}]\n")
+    file.write(f'Test: {qnn_test}')
     file.write(f'Execution Time: {time_hours} H, {elapsed_minutes} M, {int(time_seconds)} S')
 
 build_plot(folder=new_folder, file_name=file_name, metric_name='accuracy', first_metric_list=qnn_training.history['acc'],
