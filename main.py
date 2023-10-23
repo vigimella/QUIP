@@ -321,6 +321,7 @@ qnn_training = model.fit(x=x_train_tfcirc,
 
 print('Test \n')
 qnn_test = model.evaluate(x_test_tfcirc, y_test)
+current_timestamp_end = datetime.datetime.now()
 modified_timestamp = re.sub(r'[.:\s-]', '', str(current_timestamp))
 LEARNING_RATE = str(LEARNING_RATE).replace('0.', '')
 THRESHOLD = str(THRESHOLD).replace('0.', '')
@@ -341,10 +342,20 @@ output_file_training = os.path.join(new_folder, 'ex-time.txt')
 
 # Open the file for writing and save the data
 with open(output_file_training, "w") as file:
-    for key, value in history.history.items():
-        file.write(f"{key}:[{', '.join(map(str, value))}]\n")
+    file.write(f'EXP Started: {current_timestamp} \n')
+
+    file.write(f'train_loss: {qnn_training.history['loss']} \n')
+    file.write(f'train_acc: {qnn_training.history['acc']} \n')
+    file.write(f'train_prec: {qnn_training.history['prec']} \n')
+    file.write(f'train_rec: {qnn_training.history['rec']} \n')
+    file.write(f'val_loss: {qnn_training.history['val_loss']} \n')
+    file.write(f'val_acc: {qnn_training.history['val_acc']} \n')
+    file.write(f'val_prec: {qnn_training.history['val_prec']} \n')
+    file.write(f'val_rec: {qnn_training.history['val_rec']} \n')
+    file.write('------- \n')
     file.write(f'Test: {qnn_test} \n')
-    file.write(f'EXP Started: {current_timestamp}')
+
+    file.write(f'EXP Ended: {current_timestamp_end} \n')
 
 build_plot(folder=new_folder, file_name=file_name, metric_name='accuracy', first_metric_list=qnn_training.history['acc'],
            second_metric_list=qnn_training.history['val_acc'])
