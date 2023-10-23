@@ -27,6 +27,23 @@ Files such as plots, training and validation values, and execution time are save
 - [@FrancescoMercaldo](https://github.com/FrancescoMercaldo)
 - [@Djack1010](https://github.com/Djack1010)
 
+If you are using this repository, please cite our work by referring to our publications (BibTex format):
+
+```commandline
+@Article{app122312025,
+    AUTHOR = {Mercaldo, Francesco and Ciaramella, Giovanni and Iadarola, Giacomo and Storto, Marco and Martinelli, Fabio and Santone, Antonella},
+    TITLE = {Towards Explainable Quantum Machine Learning for Mobile Malware Detection and Classification},
+    JOURNAL = {Applied Sciences},
+    VOLUME = {12},
+    YEAR = {2022},
+    NUMBER = {23},
+    ARTICLE-NUMBER = {12025},
+    URL = {https://www.mdpi.com/2076-3417/12/23/12025},
+    ISSN = {2076-3417},
+    DOI = {10.3390/app122312025}
+    }
+```
+
 ## Contributing
 
 The authors would like to thank the 'Trust, Security and Privacy' research group within the [Institute of Informatics and Telematics](https://www.iit.cnr.it/) (CNR - Pisa, Italy), that support their researches.
