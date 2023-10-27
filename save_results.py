@@ -1,10 +1,11 @@
 import os
 import matplotlib.pyplot as plt
 import seaborn as sns
-def create_file(epochs, batch_size, learning_rate, threshold, model_train, model_test, output_file_training, confusion_matrix):
+def create_file(start_timestamp, end_timestamp, epochs, batch_size, learning_rate, threshold, model_train,
+                model_test, output_file_training, confusion_matrix):
 
     with open(output_file_training, "w") as file:
-        file.write(f'EXP Started: {current_timestamp} \n')
+        file.write(f'EXP Started: {start_timestamp} \n')
 
         file.write(f'Epochs: {epochs}')
         file.write(f'Batch Size: {batch_size}')
@@ -24,7 +25,7 @@ def create_file(epochs, batch_size, learning_rate, threshold, model_train, model
         file.write('------- \n')
         file.write(confusion_matrix)
         file.write('------- \n')
-        file.write(f'EXP Ended: {current_timestamp_end} \n')
+        file.write(f'EXP Ended: {end_timestamp} \n')
 
 def build_plot(folder, file_name, first_metric_list, second_metric_list, metric_name):
     plt.rcParams["figure.autolayout"] = True
@@ -78,9 +79,9 @@ def build_confusion_matrix(confusion_matrix, class_labels, output_file_path):
     plt.title('Confusion Matrix')
     plt.savefig(output_file_path)
 
-def save_exp(files_folder, batch_size, epochs, learning_rate, modified_timestamp, threshold, model_train, model_test, confusion_matrix, class_labels):
+def save_exp(files_folder, batch_size, epochs, learning_rate, start_timestamp, end_timestamp, threshold, model_train, model_test, confusion_matrix, class_labels):
 
-    file_name = f'exp{str(batch_size)}{str(epochs)}{learning_rate}_{modified_timestamp}_T{threshold}'
+    file_name = f'exp{str(batch_size)}{str(epochs)}{learning_rate}_{end_timestamp}_T{threshold}'
 
     new_folder = os.path.join(files_folder, file_name)
 
@@ -89,7 +90,8 @@ def save_exp(files_folder, batch_size, epochs, learning_rate, modified_timestamp
 
     output_file_resume = os.path.join(new_folder, 'ex-time.txt')
     output_confusion_matrix = os.path.join(new_folder, f'{file_name}-confusion-matrix.png')
-    create_file(epochs, batch_size, learning_rate, threshold, model_train, model_test, output_file_resume, confusion_matrix)
+    create_file(start_timestamp, end_timestamp, epochs, batch_size, learning_rate, threshold, model_train, model_test,
+                output_file_resume, confusion_matrix)
     build_confusion_matrix(confusion_matrix, class_labels, output_confusion_matrix)
 
     build_plot(folder=new_folder, file_name=file_name, metric_name='accuracy',
