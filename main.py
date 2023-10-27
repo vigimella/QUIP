@@ -15,6 +15,7 @@ import collections
 
 import random
 
+from distutils import config
 from tqdm import tqdm
 from keras import models
 from keras import layers
