@@ -1,21 +1,16 @@
-import importlib, pkg_resources
-
-importlib.reload(pkg_resources)
 import os, glob, shutil, pickle, datetime, re
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 import tensorflow as tf
 import tensorflow_quantum as tfq
-import matplotlib.pyplot as plt
-from distutils import config
+import seaborn as sns
 
 import cirq
 import argparse
 import time
 import sympy
 import numpy as np
-import seaborn as sns
 import collections
 
 import random
@@ -25,10 +20,12 @@ from keras import models
 from keras import layers
 from keras.metrics import Precision, Recall, AUC
 from tensorflow.keras.models import Model
+from sklearn.metrics import confusion_matrix
 
-# visualization tools
 import matplotlib.pyplot as plt
 from cirq.contrib.svg import SVGCircuit
+
+from save_results import save_exp
 
 APP_ROOT = os.path.dirname(os.path.abspath(__file__))
 files_folder = os.path.join(APP_ROOT, 'exp_archive')
@@ -41,6 +38,15 @@ def get_label(file_path):
     # cast to float32 for one_hot encode (otherwise TRUE/FALSE tensor)
     return tf.cast(parts[-2] == CLASS_NAMES, tf.float32)
 
+def get_classes(dataset_path):
+
+    # List all subdirectories in the training folder
+    train_path_dir = os.path.join(dataset_path, "training/train")
+
+    class_labels = [class_name for class_name in os.listdir(train_path_dir) if
+                    os.path.isdir(os.path.join(train_path_dir, class_name))]
+
+    return class_labels
 
 def decode_img(img):
     # convert the compressed string to a 3D uint8 tensor
@@ -97,50 +103,6 @@ def parse_args():
     group.set_defaults(classAnalysis=True)
     arguments = parser.parse_args()
     return arguments
-
-
-def build_plot(folder, file_name, first_metric_list, second_metric_list, metric_name):
-    plt.rcParams["figure.autolayout"] = True
-    metric_name = metric_name.capitalize()
-    file_name = file_name.replace('.results', '')
-    plot_name = os.path.join(folder, f'{metric_name}_{file_name}')
-
-    # plot creation
-    num_epochs = len(first_metric_list) + 1
-    epochs = range(1, num_epochs)
-
-    fig, ax = plt.subplots()
-
-    ax.plot(epochs, first_metric_list, color='#BF2A15', linestyle=':', label=f'Training {metric_name}')
-    ax.plot(epochs, second_metric_list, 'o-', label=f'Validation {metric_name}')
-    ax.set_xlabel('Epochs')
-    ax.set_ylabel(f'{metric_name}')
-    ax.set_xticks(range(1, len(first_metric_list) + 1))
-    ax.legend()
-
-    # set plot colors
-
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.spines['bottom'].set_visible(False)
-    ax.spines['left'].set_visible(False)
-    ax.set_facecolor('#e5e5e5')
-    ax.tick_params(color='#797979', labelcolor='#797979')
-    ax.patch.set_edgecolor('black')
-    ax.grid(True, color='white')
-
-    if not num_epochs >= 20:
-        plt.rcParams["figure.figsize"] = [(num_epochs / 3.22), 5.50]
-
-    else:
-        plt.tick_params(axis='x', which='major', labelsize=5)
-        plt.rcParams["figure.figsize"] = [8.50, 5.50]
-
-    plt.draw()
-
-    fig.savefig(plot_name, dpi=180)
-
-    print(f"{metric_name}'s plot created and stored at following path: {folder}.")
 
 current_timestamp = datetime.datetime.now()
 
@@ -321,47 +283,28 @@ qnn_training = model.fit(x=x_train_tfcirc,
 
 print('Test \n')
 qnn_test = model.evaluate(x_test_tfcirc, y_test)
+
+print('Creating Confusion Matrix... \n')
+
+class_labels = get_classes(dataset_path=dataset_folder)
+
+y_true = np.argmax(y_test, axis=1)
+y_pred = np.argmax(model.predict(x_test_tfcirc), axis=1)
+confusion = confusion_matrix(y_true, y_pred)
+
 current_timestamp_end = datetime.datetime.now()
+
+print(f'EXP end: {current_timestamp_end}')
+
 modified_timestamp = re.sub(r'[.:\s-]', '', str(current_timestamp))
 LEARNING_RATE = str(LEARNING_RATE).replace('0.', '')
 THRESHOLD = str(THRESHOLD).replace('0.', '')
 
-file_name = f'exp{str(BATCH_SIZE)}{str(EPOCHS)}{LEARNING_RATE}_{modified_timestamp}_T{THRESHOLD}'
-
-history = qnn_training.history
-
 # Save Results
 print('Saving Results...')
 
-new_folder = os.path.join(files_folder, file_name)
-
-if not os.path.exists(new_folder):
-    os.makedirs(new_folder)
-
-output_file_training = os.path.join(new_folder, 'ex-time.txt')
-
-# Open the file for writing and save the data
-with open(output_file_training, "w") as file:
-    file.write(f'EXP Started: {current_timestamp} \n')
-
-    file.write(f'train_loss: {qnn_training.history['loss']} \n')
-    file.write(f'train_acc: {qnn_training.history['acc']} \n')
-    file.write(f'train_prec: {qnn_training.history['prec']} \n')
-    file.write(f'train_rec: {qnn_training.history['rec']} \n')
-    file.write(f'val_loss: {qnn_training.history['val_loss']} \n')
-    file.write(f'val_acc: {qnn_training.history['val_acc']} \n')
-    file.write(f'val_prec: {qnn_training.history['val_prec']} \n')
-    file.write(f'val_rec: {qnn_training.history['val_rec']} \n')
-    file.write('------- \n')
-    file.write(f'Test: {qnn_test} \n')
-
-    file.write(f'EXP Ended: {current_timestamp_end} \n')
-
-build_plot(folder=new_folder, file_name=file_name, metric_name='accuracy', first_metric_list=qnn_training.history['acc'],
-           second_metric_list=qnn_training.history['val_acc'])
-build_plot(folder=new_folder, file_name=file_name, metric_name='loss', first_metric_list=qnn_training.history['loss'],
-           second_metric_list=qnn_training.history['val_loss'])
+save_exp(BATCH_SIZE, EPOCHS, LEARNING_RATE, modified_timestamp, THRESHOLD, qnn_training, qnn_test, confusion, class_labels)
 
 shutil.make_archive(new_folder, 'zip', new_folder)
+shutil.rmtree(new_folder)
 print(f'All files were successfully saved to the following directory: {files_folder}')
-
