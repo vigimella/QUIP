@@ -304,7 +304,7 @@ THRESHOLD = str(THRESHOLD).replace('0.', '')
 # Save Results
 print('Saving Results...')
 
-save_exp(BATCH_SIZE, EPOCHS, LEARNING_RATE, modified_timestamp, THRESHOLD, qnn_training, qnn_test, confusion, class_labels)
+save_exp(files_folder, BATCH_SIZE, EPOCHS, LEARNING_RATE, modified_timestamp, THRESHOLD, qnn_training, qnn_test, confusion, class_labels)
 
 shutil.make_archive(new_folder, 'zip', new_folder)
 shutil.rmtree(new_folder)

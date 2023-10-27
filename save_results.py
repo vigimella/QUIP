@@ -78,7 +78,7 @@ def build_confusion_matrix(confusion_matrix, class_labels, output_file_path):
     plt.title('Confusion Matrix')
     plt.savefig(output_file_path)
 
-def save_exp(batch_size, epochs, learning_rate, modified_timestamp, threshold, model_train, model_test, confusion_matrix, class_labels):
+def save_exp(files_folder, batch_size, epochs, learning_rate, modified_timestamp, threshold, model_train, model_test, confusion_matrix, class_labels):
 
     file_name = f'exp{str(batch_size)}{str(epochs)}{learning_rate}_{modified_timestamp}_T{threshold}'
 
