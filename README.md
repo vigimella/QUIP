@@ -7,6 +7,7 @@ This repository enables the execution of a Deep Learning algorithm using a Quant
 - Changed plot's quality and design.
 - Changed way to save results obtained.
 - Deleted unused files and requirements.
+- Added Confusion Matrix
 
 ## Usage
 Create a shell file by entering the following parameters: dataset name, ephocs, batch size, learning rate and threshold.
@@ -20,7 +21,7 @@ After the .sh file is created, run the following command
 ```bash
 docker-compose up --build
 ```
-Files such as plots, training and validation values, and execution time are saved after execution in a folder called "exp_archive".
+Files such as plots, confusion matrix, training and validation results, and execution time are saved after execution in a folder called "exp_archive".
 ## Authors
 
 - [@Vigimella](https://www.github.com/vigimella)

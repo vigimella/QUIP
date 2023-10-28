@@ -1,17 +1,16 @@
-import os
+import os, shutil
 import matplotlib.pyplot as plt
 import seaborn as sns
-def create_file(start_timestamp, end_timestamp, epochs, batch_size, learning_rate, threshold, model_train,
+
+
+def create_file(execution_time, epochs, batch_size, learning_rate, threshold, model_train,
                 model_test, output_file_training, confusion_matrix):
-
-    with open(output_file_training, "w") as file:
-        file.write(f'EXP Started: {start_timestamp} \n')
-
-        file.write(f'Epochs: {epochs}')
-        file.write(f'Batch Size: {batch_size}')
-        file.write(f'Learning Rate: 0.{learning_rate}')
-        file.write(f'Threshold: {threshold}')
-        file.write('------- \n')
+    with open(output_file_training, "w+") as file:
+        file.write(f'Epochs: {epochs} \n')
+        file.write(f'Batch Size: {batch_size} \n')
+        file.write(f'Learning Rate: 0.{learning_rate} \n')
+        file.write(f'Threshold: {threshold} \n')
+        file.write('\n')
         file.write(f"train_loss: {model_train.history['loss']} \n")
         file.write(f"train_acc: {model_train.history['acc']} \n")
         file.write(f"train_prec: {model_train.history['prec']} \n")
@@ -20,12 +19,13 @@ def create_file(start_timestamp, end_timestamp, epochs, batch_size, learning_rat
         file.write(f"val_acc: {model_train.history['val_acc']} \n")
         file.write(f"val_prec: {model_train.history['val_prec']} \n")
         file.write(f"val_rec: {model_train.history['val_rec']} \n")
-        file.write('------- \n')
+        file.write('\n')
         file.write(f'Test: {model_test} \n')
-        file.write('------- \n')
-        file.write(confusion_matrix)
-        file.write('------- \n')
-        file.write(f'EXP Ended: {end_timestamp} \n')
+        file.write('\n')
+        file.write(str(confusion_matrix))
+        file.write('\n')
+        file.write(f'Execution Time: {execution_time} \n')
+
 
 def build_plot(folder, file_name, first_metric_list, second_metric_list, metric_name):
     plt.rcParams["figure.autolayout"] = True
@@ -70,8 +70,8 @@ def build_plot(folder, file_name, first_metric_list, second_metric_list, metric_
 
     print(f"{metric_name}'s plot created and stored at following path: {folder}.")
 
-def build_confusion_matrix(confusion_matrix, class_labels, output_file_path):
 
+def build_confusion_matrix(confusion_matrix, class_labels, output_file_path):
     plt.figure(figsize=(8, 6))
     sns.heatmap(confusion_matrix, annot=True, fmt='d', cmap='Blues', xticklabels=class_labels, yticklabels=class_labels)
     plt.xlabel('Predicted')
@@ -79,18 +79,19 @@ def build_confusion_matrix(confusion_matrix, class_labels, output_file_path):
     plt.title('Confusion Matrix')
     plt.savefig(output_file_path)
 
-def save_exp(files_folder, batch_size, epochs, learning_rate, start_timestamp, end_timestamp, threshold, model_train, model_test, confusion_matrix, class_labels):
 
-    file_name = f'exp{str(batch_size)}{str(epochs)}{learning_rate}_{end_timestamp}_T{threshold}'
+def save_exp(files_folder, batch_size, epochs, learning_rate, timestamp, execution_time, threshold, model_train,
+             model_test, confusion_matrix, class_labels):
+    file_name = f'exp{str(batch_size)}{str(epochs)}{learning_rate}_{timestamp}_T{threshold}'
 
     new_folder = os.path.join(files_folder, file_name)
 
     if not os.path.exists(new_folder):
         os.makedirs(new_folder)
 
-    output_file_resume = os.path.join(new_folder, 'ex-time.txt')
-    output_confusion_matrix = os.path.join(new_folder, f'{file_name}-confusion-matrix.png')
-    create_file(start_timestamp, end_timestamp, epochs, batch_size, learning_rate, threshold, model_train, model_test,
+    output_file_resume = os.path.join(new_folder, f'experiment-{timestamp}.txt')
+    output_confusion_matrix = os.path.join(new_folder, f'{timestamp}-confusion-matrix.png')
+    create_file(execution_time, epochs, batch_size, learning_rate, threshold, model_train, model_test,
                 output_file_resume, confusion_matrix)
     build_confusion_matrix(confusion_matrix, class_labels, output_confusion_matrix)
 
@@ -100,3 +101,6 @@ def save_exp(files_folder, batch_size, epochs, learning_rate, start_timestamp, e
     build_plot(folder=new_folder, file_name=file_name, metric_name='loss',
                first_metric_list=model_train.history['loss'],
                second_metric_list=model_train.history['val_loss'])
+
+    shutil.make_archive(new_folder, 'zip', new_folder)
+    shutil.rmtree(new_folder)

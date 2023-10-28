@@ -1,10 +1,10 @@
-import os, glob, shutil, pickle, datetime, re
+import os, time, datetime, re, warnings
 
+warnings.simplefilter(action='ignore', category=FutureWarning)
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 import tensorflow as tf
 import tensorflow_quantum as tfq
-import seaborn as sns
 
 import cirq
 import argparse
@@ -105,8 +105,6 @@ def parse_args():
     arguments = parser.parse_args()
     return arguments
 
-current_timestamp = datetime.datetime.now()
-
 args = parse_args()
 
 config.DATASET = args.dataset
@@ -129,7 +127,6 @@ templist = list()
 for folder in os.walk(train_path_dir_elm):
     templist.append(folder[0].replace(train_path_dir_elm, '').replace('/', ''))
 
-start_time = time.time()
 
 # hyperparameter setting
 CLASS_NAMES = list(filter(None, templist))
@@ -141,7 +138,11 @@ THRESHOLD = config.THRESHOLD
 NUM_CLASSES = len(CLASS_NAMES)
 
 print(
-    f'Experiment submitted | Batch Size: {str(BATCH_SIZE)}, Epochs: {str(EPOCHS)}, Learning Rate: {str(LEARNING_RATE)}')
+    f'Experiment submitted | Batch Size: {str(BATCH_SIZE)}, Epochs: {str(EPOCHS)}, Learning Rate: {str(LEARNING_RATE)},'
+    f'THRESHOLD: {str(THRESHOLD)}')
+
+current_timestamp = datetime.datetime.now()
+start_time = time.time()
 
 lab_train = train_path_dir.map(process_path, num_parallel_calls=tf.data.experimental.AUTOTUNE)
 lab_val = val_path_dir.map(process_path, num_parallel_calls=tf.data.experimental.AUTOTUNE)
@@ -293,19 +294,19 @@ y_true = np.argmax(y_test, axis=1)
 y_pred = np.argmax(model.predict(x_test_tfcirc), axis=1)
 confusion = confusion_matrix(y_true, y_pred)
 
-current_timestamp_end = datetime.datetime.now()
+end_time = time.time()
+total_seconds = end_time - start_time
+execution_time = str(datetime.timedelta(seconds=total_seconds))
 
-print(f'EXP end: {current_timestamp_end}')
+print(f'Execution Time: {execution_time}')
 
-modified_timestamp = re.sub(r'[.:\s-]', '', str(current_timestamp))
+timestamp = re.sub(r'[.:\s-]', '', str(current_timestamp))
 LEARNING_RATE = str(LEARNING_RATE).replace('0.', '')
 THRESHOLD = str(THRESHOLD).replace('0.', '')
 
 # Save Results
 print('Saving Results...')
 
-save_exp(files_folder, BATCH_SIZE, EPOCHS, LEARNING_RATE, modified_timestamp, current_timestamp_end, THRESHOLD, qnn_training, qnn_test, confusion, class_labels)
+save_exp(files_folder, BATCH_SIZE, EPOCHS, LEARNING_RATE, timestamp, execution_time, THRESHOLD, qnn_training, qnn_test, confusion, class_labels)
 
-shutil.make_archive(new_folder, 'zip', new_folder)
-shutil.rmtree(new_folder)
 print(f'All files were successfully saved to the following directory: {files_folder}')
