@@ -38,9 +38,17 @@ def build_plot(folder, file_name, first_metric_list, second_metric_list, metric_
     epochs = range(1, num_epochs)
 
     fig, ax = plt.subplots()
+    
+    if 'gap' in metric_name.lower():
 
-    ax.plot(epochs, first_metric_list, color='#BF2A15', linestyle=':', label=f'Training {metric_name}')
-    ax.plot(epochs, second_metric_list, 'o-', label=f'Validation {metric_name}')
+        accuracy_gap = [train - val for train, val in zip(first_metric_list, second_metric_list)]
+        ax.plot(epochs, accuracy_gap, color='purple', marker='o', label=f'Accuracy Gap (Train-Val)')
+    
+    else:
+
+        ax.plot(epochs, first_metric_list, color='#BF2A15', linestyle=':', label=f'Training {metric_name}')
+        ax.plot(epochs, second_metric_list, 'o-', label=f'Validation {metric_name}')
+        
     ax.set_xlabel('Epochs')
     ax.set_ylabel(f'{metric_name}')
     ax.set_xticks(range(1, len(first_metric_list) + 1))
@@ -72,12 +80,13 @@ def build_plot(folder, file_name, first_metric_list, second_metric_list, metric_
 
 
 def build_confusion_matrix(confusion_matrix, class_labels, output_file_path):
+        
     plt.figure(figsize=(8, 6))
     sns.heatmap(confusion_matrix, annot=True, fmt='d', cmap='Blues', xticklabels=class_labels, yticklabels=class_labels)
-    plt.xlabel('Predicted')
-    plt.ylabel('True')
+    plt.xlabel('Predicted Label')
+    plt.ylabel('True Label')
     plt.title('Confusion Matrix')
-    plt.savefig(output_file_path)
+    plt.savefig(output_file_path, bbox_inches="tight")
 
 
 def save_exp(files_folder, batch_size, epochs, learning_rate, timestamp, execution_time, threshold, model_train,
@@ -96,6 +105,9 @@ def save_exp(files_folder, batch_size, epochs, learning_rate, timestamp, executi
     build_confusion_matrix(confusion_matrix, class_labels, output_confusion_matrix)
 
     build_plot(folder=new_folder, file_name=file_name, metric_name='accuracy',
+               first_metric_list=model_train.history['acc'],
+               second_metric_list=model_train.history['val_acc'])
+    build_plot(folder=new_folder, file_name=file_name, metric_name='gap',
                first_metric_list=model_train.history['acc'],
                second_metric_list=model_train.history['val_acc'])
     build_plot(folder=new_folder, file_name=file_name, metric_name='loss',
