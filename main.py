@@ -13,7 +13,7 @@ import sympy
 import numpy as np
 import collections
 
-import random
+from tensorflow.keras.layers import Layer
 
 from distutils import config
 from tqdm import tqdm
@@ -30,6 +30,29 @@ from save_results import save_exp
 
 APP_ROOT = os.path.dirname(os.path.abspath(__file__))
 files_folder = os.path.join(APP_ROOT, 'exp_archive')
+
+class CustomPQC(tfq.layers.PQC):
+    def __init__(self, model_circuit, operators, **kwargs):
+        super().__init__(model_circuit, operators, **kwargs)
+        self.model_circuit = model_circuit
+        self.operators = operators
+
+    def get_config(self):
+        config = super().get_config()
+        # Serialize the circuit and operators
+        config.update({
+            'model_circuit': cirq.to_json(self.model_circuit),
+            'operators': [cirq.to_json(op) for op in self.operators],
+        })
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        # Deserialize the circuit and operators
+        model_circuit = cirq.read_json(json_text=config['model_circuit'])
+        operators = [cirq.read_json(json_text=op) for op in config['operators']]
+        return cls(model_circuit=model_circuit, operators=operators, **config)
+
 
 
 def get_label(file_path):
@@ -94,6 +117,7 @@ def parse_args():
     parser = argparse.ArgumentParser(prog="QNN", description='Docker to execute Quantum Neural Network')
     group = parser.add_argument_group('Arguments')
     group.add_argument('-d', '--dataset', required=True, type=str, help='dataset')
+    group.add_argument('-i', '--image', required=True, type=int, help='image size')
     group.add_argument('-e', '--epochs', required=False, type=int, default=10,
                        help='number of epochs')
     group.add_argument('-b', '--batch_size', required=False, type=int, default=32)
@@ -108,6 +132,7 @@ def parse_args():
 args = parse_args()
 
 config.DATASET = args.dataset
+config.IMAGE_SIZE = args.image
 config.THRESHOLD = args.threshold
 config.LEARNING_RATE = args.learning_rate
 config.EPOCHS = args.epochs
@@ -130,7 +155,7 @@ for folder in os.walk(train_path_dir_elm):
 
 # hyperparameter setting
 CLASS_NAMES = list(filter(None, templist))
-IMG_DIM = 28
+IMG_DIM = config.IMAGE_SIZE
 BATCH_SIZE = config.BATCH_SIZE
 EPOCHS = config.EPOCHS
 LEARNING_RATE = config.LEARNING_RATE
@@ -267,7 +292,7 @@ model = tf.keras.Sequential([
     tf.keras.layers.Input(shape=(), dtype=tf.string),
 
     # The PQC layer returns the expected value of the readout gate, range [-1,1].
-    tfq.layers.PQC(model_circuit, model_readout),
+    CustomPQC(model_circuit, model_readout),
 
     layers.Dense(NUM_CLASSES, activation='softmax'),
 ])
@@ -307,6 +332,9 @@ THRESHOLD = str(THRESHOLD).replace('0.', '')
 # Save Results
 print('Saving Results...')
 
-save_exp(files_folder, BATCH_SIZE, EPOCHS, LEARNING_RATE, timestamp, execution_time, THRESHOLD, qnn_training, qnn_test, confusion, class_labels)
+dest_folder = save_exp(files_folder, BATCH_SIZE, EPOCHS, LEARNING_RATE, timestamp, execution_time, THRESHOLD, qnn_training, qnn_test, confusion, class_labels)
 
-print(f'All files were successfully saved to the following directory: {files_folder}')
+model_path = os.path.join(dest_folder, f'model_{timestamp}.h5')
+model.save(model_path)
+
+print(f'All files were successfully saved to the following directory: {dest_folder}')

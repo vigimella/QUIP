@@ -101,6 +101,5 @@ def save_exp(files_folder, batch_size, epochs, learning_rate, timestamp, executi
     build_plot(folder=new_folder, file_name=file_name, metric_name='loss',
                first_metric_list=model_train.history['loss'],
                second_metric_list=model_train.history['val_loss'])
-
-    shutil.make_archive(new_folder, 'zip', new_folder)
-    shutil.rmtree(new_folder)
+    
+    return new_folder
