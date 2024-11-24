@@ -138,7 +138,12 @@ config.LEARNING_RATE = args.learning_rate
 config.EPOCHS = args.epochs
 config.BATCH_SIZE = args.batch_size
 
-dataset_folder = os.path.join(APP_ROOT, config.DATASET)
+dataset_main_folder = os.path.join(APP_ROOT, 'datasets')
+
+if not os.path.exists(dataset_main_folder):
+    os.makedirs(dataset_main_folder)
+
+dataset_folder = os.path.join(dataset_main_folder, config.DATASET)
 
 # dataset path declaration
 train_path_dir = tf.data.Dataset.list_files(os.path.join(dataset_folder, "training/train/*/*"))

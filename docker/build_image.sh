@@ -1,0 +1,1 @@
+docker build -t quip/tensorflow:2.7 .

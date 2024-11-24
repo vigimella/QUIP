@@ -6,15 +6,23 @@ This repository enables the execution of a Deep Learning algorithm using a Quant
 ## Usage
 Create a shell file by entering the following parameters: dataset name, ephocs, batch size, learning rate and threshold.
 ```bash
-#!/bin/bash
+cd docker
 
-python3 main.py -d dataset_name -e epochs_name -b batch_size -r learning_rate -t threshold
+./build_image.sh
 ```
-After the .sh file is created, run the following command
+To run container, run the following command
 
 ```bash
-docker-compose up --build
+
+./run_contained.sh
 ```
+To execute experiments, run the following command
+```bash
+
+python3 main.py -d dataset_name -i image_dimension -e num_epochs -b batch_size -r learning_rate -t trashold
+
+```
+
 Files such as plots, confusion matrix, training and validation results, and execution time are saved after execution in a folder called "exp_archive".
 ## Authors
 

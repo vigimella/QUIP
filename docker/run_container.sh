@@ -1,0 +1,1 @@
+docker run --rm -u $(id -u):$(id -g) -v $(pwd)/..:/home/QUIP --name="${USER}_$(date +%s)" -it quip/tensorflow:2.7 bash
