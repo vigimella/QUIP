@@ -4,7 +4,7 @@ QUantum Image Processing
 This repository enables the execution of a Deep Learning algorithm using a Quantum Neural Network.
 
 ## Usage
-Create a shell file by entering the following parameters: dataset name, ephocs, batch size, learning rate and threshold.
+
 ```bash
 cd docker
 
