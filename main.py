@@ -215,9 +215,9 @@ del x_test[-1]
 del y_test[-1]
 
 
-def convert_to_circuit(image):
+def convert_to_circuit(image, img_size):
     values = np.ndarray.flatten(image)
-    qubits = cirq.GridQubit.rect(4, 4)
+    qubits = cirq.GridQubit.rect(img_size, img_size)
     circuit = cirq.Circuit()
     for i, value in enumerate(values):
         if value:
@@ -225,12 +225,12 @@ def convert_to_circuit(image):
     return circuit
 
 
-def quantum_preprocess(image):
-    small_image = tf.image.resize(image, (4, 4)).numpy()
+def quantum_preprocess(image, img_size):
+    small_image = tf.image.resize(image, (img_size, img_size)).numpy()
 
     binary_image = np.array(small_image > THRESHOLD, dtype=np.float32)
 
-    circ_image = [convert_to_circuit(x) for x in binary_image]
+    circ_image = [convert_to_circuit(x, IMG_DIM) for x in binary_image]
 
     tfcirc_img = tfq.convert_to_tensor(circ_image)
 
@@ -239,9 +239,9 @@ def quantum_preprocess(image):
     return tfcirc_img
 
 
-x_train_tfcirc = [quantum_preprocess(train) for train in x_train]
-x_val_tfcirc = [quantum_preprocess(val) for val in x_val]
-x_test_tfcirc = [quantum_preprocess(test) for test in x_test]
+x_train_tfcirc = [quantum_preprocess(train, IMG_DIM) for train in x_train]
+x_val_tfcirc = [quantum_preprocess(val, IMG_DIM) for val in x_val]
+x_test_tfcirc = [quantum_preprocess(test, IMG_DIM) for test in x_test]
 
 x_train_tfcirc = np.vstack(train for train in x_train_tfcirc).flatten()
 x_val_tfcirc = np.vstack(val for val in x_val_tfcirc).flatten()
@@ -268,9 +268,9 @@ class CircuitLayerBuilder:
             circuit.append(gate(qubit, self.readout) ** symbol)
 
 
-def create_qnn_model():
+def create_qnn_model(img_size):
     """Create a QNN model circuit and readout operation to go along with it."""
-    data_qubits = cirq.GridQubit.rect(4, 4)  # a 4x4 grid.
+    data_qubits = cirq.GridQubit.rect(img_size, img_size)
     readout = cirq.GridQubit(-1, -1)  # a single qubit at [-1,-1]
     circ = cirq.Circuit()
 
@@ -290,7 +290,7 @@ def create_qnn_model():
     return circ, cirq.Z(readout)
 
 
-model_circuit, model_readout = create_qnn_model()
+model_circuit, model_readout = create_qnn_model(IMG_DIM)
 
 model = tf.keras.Sequential([
     # The input is the data-circuit, encoded as a tf.string
@@ -337,7 +337,7 @@ THRESHOLD = str(THRESHOLD).replace('0.', '')
 # Save Results
 print('Saving Results...')
 
-dest_folder = save_exp(files_folder, BATCH_SIZE, EPOCHS, LEARNING_RATE, timestamp, execution_time, THRESHOLD, qnn_training, qnn_test, confusion, class_labels)
+dest_folder = save_exp(files_folder, BATCH_SIZE, EPOCHS, LEARNING_RATE, timestamp, IMG_DIM, execution_time, THRESHOLD, qnn_training, qnn_test, confusion, class_labels)
 
 model_path = os.path.join(dest_folder, f'model_{timestamp}.h5')
 model.save(model_path)

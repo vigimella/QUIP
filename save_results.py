@@ -3,13 +3,14 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 
-def create_file(execution_time, epochs, batch_size, learning_rate, threshold, model_train,
+def create_file(execution_time, epochs, batch_size, learning_rate, threshold, IMG_DIM, model_train,
                 model_test, output_file_training, confusion_matrix):
     with open(output_file_training, "w+") as file:
         file.write(f'Epochs: {epochs} \n')
         file.write(f'Batch Size: {batch_size} \n')
         file.write(f'Learning Rate: 0.{learning_rate} \n')
         file.write(f'Threshold: {threshold} \n')
+        file.write(f'Image Size: {IMG_DIM} \n')
         file.write('\n')
         file.write(f"train_loss: {model_train.history['loss']} \n")
         file.write(f"train_acc: {model_train.history['acc']} \n")
@@ -89,7 +90,7 @@ def build_confusion_matrix(confusion_matrix, class_labels, output_file_path):
     plt.savefig(output_file_path, bbox_inches="tight")
 
 
-def save_exp(files_folder, batch_size, epochs, learning_rate, timestamp, execution_time, threshold, model_train,
+def save_exp(files_folder, batch_size, epochs, learning_rate, timestamp, IMG_DIM, execution_time, threshold, model_train,
              model_test, confusion_matrix, class_labels):
     file_name = f'exp{str(batch_size)}{str(epochs)}{learning_rate}_{timestamp}_T{threshold}'
 
@@ -100,7 +101,7 @@ def save_exp(files_folder, batch_size, epochs, learning_rate, timestamp, executi
 
     output_file_resume = os.path.join(new_folder, f'experiment-{timestamp}.txt')
     output_confusion_matrix = os.path.join(new_folder, f'{timestamp}-confusion-matrix.png')
-    create_file(execution_time, epochs, batch_size, learning_rate, threshold, model_train, model_test,
+    create_file(execution_time, epochs, batch_size, learning_rate, threshold, IMG_DIM, model_train, model_test,
                 output_file_resume, confusion_matrix)
     build_confusion_matrix(confusion_matrix, class_labels, output_confusion_matrix)
 
