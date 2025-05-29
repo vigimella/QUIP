@@ -241,8 +241,8 @@ def parse_args():
     group.add_argument('-r', '--learning_rate', required=False, type=float, default=0.01,
                        help="Learning rate for training models")
     group.add_argument('-t', '--threshold', required=False, type=float, default=0.5, help='dataset')
-    group.add_argument('-lm', '--loadmodel', required=False, type=str, default='', help='dataset')
-    group.add_argument('-m', '--mode', required=False, type=str, default='complete', help='dataset')
+    group.add_argument('-lm', '--loadmodel', required=False, type=str, default='', help='load model saved during training')
+    group.add_argument('-m', '--mode', required=False, type=str, default='complete', help='mode of execution. complete --> train-val-test; train-val; test',)
 
     group.set_defaults(classAnalysis=True)
     arguments = parser.parse_args()
