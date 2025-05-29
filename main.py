@@ -20,8 +20,11 @@ from tqdm import tqdm
 from keras import models
 from keras import layers
 from keras.metrics import Precision, Recall, AUC
+import io
 from tensorflow.keras.models import Model
 from sklearn.metrics import confusion_matrix
+from tensorflow.keras.utils import register_keras_serializable
+
 
 import matplotlib.pyplot as plt
 from cirq.contrib.svg import SVGCircuit
@@ -31,6 +34,7 @@ from save_results import save_exp
 APP_ROOT = os.path.dirname(os.path.abspath(__file__))
 files_folder = os.path.join(APP_ROOT, 'exp_archive')
 
+@register_keras_serializable()
 class CustomPQC(tfq.layers.PQC):
     def __init__(self, model_circuit, operators, **kwargs):
         super().__init__(model_circuit, operators, **kwargs)
@@ -39,7 +43,7 @@ class CustomPQC(tfq.layers.PQC):
 
     def get_config(self):
         config = super().get_config()
-        # Serialize the circuit and operators
+        # Convert to JSON strings
         config.update({
             'model_circuit': cirq.to_json(self.model_circuit),
             'operators': [cirq.to_json(op) for op in self.operators],
@@ -48,13 +52,32 @@ class CustomPQC(tfq.layers.PQC):
 
     @classmethod
     def from_config(cls, config):
-        # Deserialize the circuit and operators
-        model_circuit = cirq.read_json(json_text=config['model_circuit'])
-        operators = [cirq.read_json(json_text=op) for op in config['operators']]
+
+        model_circuit_json = config.pop('model_circuit')
+        operators_json = config.pop('operators')
+
+        model_circuit = cirq.read_json(io.StringIO(model_circuit_json))
+        raw_operators = [cirq.read_json(io.StringIO(op)) for op in operators_json]
+
+        # Ensure all operators are valid Pauli types
+        operators = [ensure_pauli(op) for op in raw_operators]
+
+        for i, op in enumerate(operators):
+            print(f"[DEBUG] Operator {i}: {op} | Type: {type(op)}")
+
         return cls(model_circuit=model_circuit, operators=operators, **config)
 
-
-
+def ensure_pauli(op):
+        if isinstance(op, (cirq.PauliString, cirq.PauliSum)):
+            return op
+        elif isinstance(op, cirq.Operation):
+            return cirq.PauliString(op)
+        elif isinstance(op, cirq.Qid):
+            # Default to Z if you just have a qubit
+            return cirq.PauliString(cirq.Z(op))
+        else:
+            raise TypeError(f"Cannot convert to PauliString: {op!r} (type: {type(op)})")
+        
 def get_label(file_path):
     # convert the path to a list of path components
     parts = tf.strings.split(file_path, os.path.sep)
@@ -104,7 +127,7 @@ def prepare_for_training(ds, cache=True, shuffle_buffer_size=1000, loop=False):
     if loop:
         ds = ds.repeat()
 
-    ds = ds.batch(BATCH_SIZE)
+    ds = ds.batch(BATCH_SIZE, drop_remainder=False)
 
     # `prefetch` lets the dataset fetch batches in the background while the model
     # is training.
@@ -112,6 +135,100 @@ def prepare_for_training(ds, cache=True, shuffle_buffer_size=1000, loop=False):
 
     return ds
 
+
+class CircuitLayerBuilder:
+    def __init__(self, data_qubits, readout):
+        self.data_qubits = data_qubits
+        self.readout = readout
+
+    def add_layer(self, circuit, gate, prefix):
+        for i, qubit in enumerate(self.data_qubits):
+            symbol = sympy.Symbol(prefix + '-' + str(i))
+            circuit.append(gate(qubit, self.readout) ** symbol)
+
+def create_qnn_model(img_size):
+    """Create a QNN model circuit and readout operation to go along with it."""
+    data_qubits = cirq.GridQubit.rect(img_size, img_size)
+    readout = cirq.GridQubit(-1, -1)  # a single qubit at [-1,-1]
+    circ = cirq.Circuit()
+
+    # Prepare the readout qubit.
+    circ.append(cirq.X(readout))
+    circ.append(cirq.H(readout))
+
+    builder = CircuitLayerBuilder(data_qubits=data_qubits, readout=readout)
+
+    # Then add layers (TODO experiment by adding more).
+    builder.add_layer(circ, cirq.XX, "xx1")
+    builder.add_layer(circ, cirq.ZZ, "zz1")
+
+    # Finally, prepare the readout qubit.
+    circ.append(cirq.H(readout))
+
+    return circ, cirq.Z(readout)
+
+def convert_to_circuit(image, img_size):
+    values = np.ndarray.flatten(image)
+    qubits = cirq.GridQubit.rect(img_size, img_size)
+    circuit = cirq.Circuit()
+    for i, value in enumerate(values):
+        if value:
+            circuit.append(cirq.X(qubits[i]))
+    return circuit
+
+def quantum_preprocess(image, img_size):
+    small_image = tf.image.resize(image, (img_size, img_size)).numpy()
+
+    binary_image = np.array(small_image > THRESHOLD, dtype=np.float32)
+
+    circ_image = [convert_to_circuit(x, IMG_DIM) for x in binary_image]
+
+    tfcirc_img = tfq.convert_to_tensor(circ_image)
+
+    del binary_image, circ_image
+
+    return tfcirc_img
+
+def train_validation_phase(x_train_tfcirc, y_train, BATCH_SIZE, EPOCHS, x_val_tfcirc, y_val):
+
+    model_circuit, model_readout = create_qnn_model(IMG_DIM)
+
+    model = tf.keras.Sequential([
+        # The input is the data-circuit, encoded as a tf.string
+        tf.keras.layers.Input(shape=(), dtype=tf.string),
+
+        # The PQC layer returns the expected value of the readout gate, range [-1,1].
+        CustomPQC(model_circuit, model_readout),
+
+        layers.Dense(NUM_CLASSES, activation='softmax'),
+    ])
+
+    opt = tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE)
+
+    model.compile(loss='categorical_crossentropy', optimizer=opt,
+                  metrics=['acc', Precision(name="prec"), Recall(name="rec"), AUC(name='auc')])
+
+    qnn_training = model.fit(x=x_train_tfcirc,
+                             y=y_train,
+                             batch_size=BATCH_SIZE,
+                             epochs=EPOCHS,
+                             validation_data=(x_val_tfcirc, y_val))
+
+    return model, qnn_training
+
+def test_phase(model, x_test_tfcirc, y_test):
+    
+    qnn_test = model.evaluate(x_test_tfcirc, y_test, verbose=0)
+    
+    return qnn_test
+
+def generate_cm(y_test, x_test_tfcirc, model):
+
+    y_true = np.argmax(y_test, axis=1)
+    y_pred = np.argmax(model.predict(x_test_tfcirc), axis=1)
+    confusion = confusion_matrix(y_true, y_pred)
+    
+    return confusion
 
 def parse_args():
     parser = argparse.ArgumentParser(prog="QNN", description='Docker to execute Quantum Neural Network')
@@ -124,6 +241,8 @@ def parse_args():
     group.add_argument('-r', '--learning_rate', required=False, type=float, default=0.01,
                        help="Learning rate for training models")
     group.add_argument('-t', '--threshold', required=False, type=float, default=0.5, help='dataset')
+    group.add_argument('-lm', '--loadmodel', required=False, type=str, default='', help='dataset')
+    group.add_argument('-m', '--mode', required=False, type=str, default='complete', help='dataset')
 
     group.set_defaults(classAnalysis=True)
     arguments = parser.parse_args()
@@ -207,122 +326,46 @@ fin_train_data = [(images.numpy(), labels.numpy()) for images, labels in train_d
 fin_val_data = [(images.numpy(), labels.numpy()) for images, labels in val_ds]
 fin_test_data = [(images.numpy(), labels.numpy()) for images, labels in test_ds]
 
-del x_train[-1]
-del y_train[-1]
-del x_val[-1]
-del y_val[-1]
-del x_test[-1]
-del y_test[-1]
-
-
-def convert_to_circuit(image, img_size):
-    values = np.ndarray.flatten(image)
-    qubits = cirq.GridQubit.rect(img_size, img_size)
-    circuit = cirq.Circuit()
-    for i, value in enumerate(values):
-        if value:
-            circuit.append(cirq.X(qubits[i]))
-    return circuit
-
-
-def quantum_preprocess(image, img_size):
-    small_image = tf.image.resize(image, (img_size, img_size)).numpy()
-
-    binary_image = np.array(small_image > THRESHOLD, dtype=np.float32)
-
-    circ_image = [convert_to_circuit(x, IMG_DIM) for x in binary_image]
-
-    tfcirc_img = tfq.convert_to_tensor(circ_image)
-
-    del binary_image, circ_image
-
-    return tfcirc_img
-
-
 x_train_tfcirc = [quantum_preprocess(train, IMG_DIM) for train in x_train]
 x_val_tfcirc = [quantum_preprocess(val, IMG_DIM) for val in x_val]
 x_test_tfcirc = [quantum_preprocess(test, IMG_DIM) for test in x_test]
 
-x_train_tfcirc = np.vstack(train for train in x_train_tfcirc).flatten()
-x_val_tfcirc = np.vstack(val for val in x_val_tfcirc).flatten()
+x_train_tfcirc = np.concatenate([train.numpy().flatten() for train in x_train_tfcirc])
+x_val_tfcirc   = np.concatenate([val.numpy().flatten() for val in x_val_tfcirc])
+x_test_tfcirc  = np.concatenate([test.numpy().flatten() for test in x_test_tfcirc])
 
-x_test_tfcirc = np.vstack(val for val in x_test_tfcirc).flatten()
-y_train = np.array(y_train)
+y_train = np.concatenate([y for y in y_train], axis=0)
+y_val = np.concatenate([y for y in y_val], axis=0)
+y_test = np.concatenate([y for y in y_test], axis=0)
 
-y_val = np.array(y_val)
-y_test = np.array(y_test)
+if args.mode == 'complete':
+    
+    model, qnn_training = train_validation_phase(x_train_tfcirc, y_train, BATCH_SIZE, EPOCHS, x_val_tfcirc, y_val)
 
-y_train = y_train.reshape(y_train.shape[0] * y_train.shape[1], y_train.shape[2])
-y_val = y_val.reshape(y_val.shape[0] * y_val.shape[1], y_val.shape[2])
-y_test = y_test.reshape(y_test.shape[0] * y_test.shape[1], y_test.shape[2])
-
-
-class CircuitLayerBuilder:
-    def __init__(self, data_qubits, readout):
-        self.data_qubits = data_qubits
-        self.readout = readout
-
-    def add_layer(self, circuit, gate, prefix):
-        for i, qubit in enumerate(self.data_qubits):
-            symbol = sympy.Symbol(prefix + '-' + str(i))
-            circuit.append(gate(qubit, self.readout) ** symbol)
-
-
-def create_qnn_model(img_size):
-    """Create a QNN model circuit and readout operation to go along with it."""
-    data_qubits = cirq.GridQubit.rect(img_size, img_size)
-    readout = cirq.GridQubit(-1, -1)  # a single qubit at [-1,-1]
-    circ = cirq.Circuit()
-
-    # Prepare the readout qubit.
-    circ.append(cirq.X(readout))
-    circ.append(cirq.H(readout))
-
-    builder = CircuitLayerBuilder(data_qubits=data_qubits, readout=readout)
-
-    # Then add layers (TODO experiment by adding more).
-    builder.add_layer(circ, cirq.XX, "xx1")
-    builder.add_layer(circ, cirq.ZZ, "zz1")
-
-    # Finally, prepare the readout qubit.
-    circ.append(cirq.H(readout))
-
-    return circ, cirq.Z(readout)
-
-
-model_circuit, model_readout = create_qnn_model(IMG_DIM)
-
-model = tf.keras.Sequential([
-    # The input is the data-circuit, encoded as a tf.string
-    tf.keras.layers.Input(shape=(), dtype=tf.string),
-
-    # The PQC layer returns the expected value of the readout gate, range [-1,1].
-    CustomPQC(model_circuit, model_readout),
-
-    layers.Dense(NUM_CLASSES, activation='softmax'),
-])
-
-opt = tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE)
-
-model.compile(loss='categorical_crossentropy', optimizer=opt,
-              metrics=['acc', Precision(name="prec"), Recall(name="rec"), AUC(name='auc')])
-
-qnn_training = model.fit(x=x_train_tfcirc,
-                         y=y_train,
-                         batch_size=BATCH_SIZE,
-                         epochs=EPOCHS,
-                         validation_data=(x_val_tfcirc, y_val))
-
-print('Test \n')
-qnn_test = model.evaluate(x_test_tfcirc, y_test)
-
-print('Creating Confusion Matrix... \n')
-
-class_labels = get_classes(dataset_path=dataset_folder)
-
-y_true = np.argmax(y_test, axis=1)
-y_pred = np.argmax(model.predict(x_test_tfcirc), axis=1)
-confusion = confusion_matrix(y_true, y_pred)
+    class_labels = get_classes(dataset_path=dataset_folder)
+    qnn_test = test_phase(model, x_test_tfcirc, y_test)
+    qnn_test = f'Test Results: Loss {qnn_test[0]}, Accuracy {qnn_test[1]}, Precision {qnn_test[2]}, Recall {qnn_test[3]}, AUC {qnn_test[4]}'
+    print(qnn_test)
+    confusion = generate_cm(y_test, x_test_tfcirc, model)
+    
+elif args.mode == 'train-val':
+    
+    model, qnn_training = train_validation_phase(x_train_tfcirc, y_train, BATCH_SIZE, EPOCHS, x_val_tfcirc, y_val)
+    class_labels = get_classes(dataset_path=dataset_folder)
+    qnn_test = ''
+    confusion = ''
+    
+elif args.mode == 'test':
+    
+    qnn_training = ''
+    
+    model = models.load_model(args.loadmodel, custom_objects={'CustomPQC': CustomPQC})
+    
+    class_labels = get_classes(dataset_path=dataset_folder)
+    qnn_test = test_phase(model, x_test_tfcirc, y_test)
+    qnn_test = f'Test Results: Loss {qnn_test[0]}, Accuracy {qnn_test[1]}, Precision {qnn_test[2]}, Recall {qnn_test[3]}, AUC {qnn_test[4]}'
+    print(qnn_test)
+    confusion = generate_cm(y_test, x_test_tfcirc, model)
 
 end_time = time.time()
 total_seconds = end_time - start_time
@@ -337,7 +380,7 @@ THRESHOLD = str(THRESHOLD).replace('0.', '')
 # Save Results
 print('Saving Results...')
 
-dest_folder = save_exp(files_folder, BATCH_SIZE, EPOCHS, LEARNING_RATE, timestamp, IMG_DIM, execution_time, THRESHOLD, qnn_training, qnn_test, confusion, class_labels)
+dest_folder = save_exp(args.mode, files_folder, BATCH_SIZE, EPOCHS, LEARNING_RATE, timestamp, IMG_DIM, execution_time, THRESHOLD, qnn_training, qnn_test, confusion, class_labels)
 
 model_path = os.path.join(dest_folder, f'model_{timestamp}.h5')
 model.save(model_path)
