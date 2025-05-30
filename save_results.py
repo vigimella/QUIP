@@ -24,7 +24,7 @@ def create_file(mode, execution_time, epochs, batch_size, learning_rate, thresho
             file.write(f"val_prec: {model_train.history['val_prec']} \n")
             file.write(f"val_rec: {model_train.history['val_rec']} \n")
 
-        if mode == 'test':
+        if not mode == 'train-val':
             
             file.write('\n')
             file.write(f'Test: {model_test} \n')
